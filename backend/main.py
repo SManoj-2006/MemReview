@@ -211,6 +211,8 @@ async def list_memories(query: str = "", limit: int = 20):
                 out.append({"text": item})
             elif isinstance(item, dict):
                 out.append({"text": item.get("content") or item.get("text") or str(item)})
+            elif hasattr(item, "text"):
+                out.append({"text": item.text})
             else:
                 out.append({"text": str(item)})
         return {"count": len(out), "memories": out}
