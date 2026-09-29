@@ -1,0 +1,13 @@
+Manoj: Hi, I'm Manoj. I built MemReview, a code review agent that actually remembers your team's standards. Most A I reviewers are stateless. You correct them once, and next week they're making the same mistake. MemReview uses persistent agent memory, so when you teach it something, it sticks.
+
+Manoj: Watch this. I'm submitting a Python login function with a SQL injection. First review, zero memories. It's a decent generic review. It catches the injection, the plaintext password, all the textbook stuff. But it knows nothing about my team. Every team has unwritten rules, and this reviewer hasn't learned a single one.
+
+Manoj: So I'm going to teach it. I mark this review not useful and write: We don't care about code style or comments. Focus only on security vulnerabilities. That feedback goes straight into the memory layer. Now let me show you what's actually stored.
+
+Manoj: It didn't just save my sentence. It extracted the team prefers security over style as a structured fact. That's the difference between a chat log and a memory system.
+
+Manoj: Now a completely different file. JavaScript, cross-site scripting via inner H T M L. Watch the badge. Eight memories applied. The review leads with the cross-site scripting vulnerability, stays locked on security issues, and skips every style nitpick it would normally include. Same reviewer, different brain, because it remembers.
+
+Manoj: And this compounds. Every review gets retained. Every correction becomes a preference. Ask it what are our recurring issues, and it synthesizes patterns across everything it's seen. That's not a reviewer anymore, that's institutional knowledge.
+
+Manoj: The stack is simple. React frontend, Fast A P I backend, Groq for the language model, and Hindsight for the memory layer. Retain, recall, reflect. The takeaway: I spent zero time on prompt engineering. All of the quality came from the memory loop. Tell it once, and it applies it forever. That's the whole idea.
