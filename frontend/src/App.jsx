@@ -127,6 +127,120 @@ function FindingCard({ f, bank, onFeedbackDone, toast }) {
   );
 }
 
+function CompareTab({ bank, toast }) {
+  const [code, setCode] = useState(SAMPLES.python);
+  const [language, setLanguage] = useState("python");
+  const [context, setContext] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [cmp, setCmp] = useState(null);
+
+  const doCompare = async () => {
+    setLoading(true); setError(""); setCmp(null);
+    try {
+      const r = await fetch(`${API}/review/compare`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code, language, context, bank }),
+      });
+      setCmp(await parseOrThrow(r));
+    } catch (e) { setError(String(e.message || e)); }
+    setLoading(false);
+  };
+
+  const catsOf = (fs) => new Set(fs.map(f => f.category));
+  let added = [], suppressed = [];
+  if (cmp) {
+    const g = catsOf(cmp.generic), p = catsOf(cmp.personalized);
+    added = cmp.personalized.filter(f => !g.has(f.category));
+    suppressed = cmp.generic.filter(f => !p.has(f.category));
+  }
+
+  return (
+    <main>
+      <p className="hint">
+        Same code, two reviews: a <strong>generic</strong> LLM pass with no memory vs{" "}
+        <strong>MemReview</strong> with {bank}'s team memory. Watch nits disappear and
+        team-specific findings appear.
+      </p>
+      <div className="row">
+        <select value={language} onChange={e => {
+          setLanguage(e.target.value);
+          if (SAMPLES[e.target.value]) setCode(SAMPLES[e.target.value]);
+        }}>
+          <option value="python">Python</option>
+          <option value="javascript">JavaScript</option>
+          <option value="java">Java</option>
+          <option value="go">Go</option>
+        </select>
+        <input placeholder="Context (optional)" value={context}
+          onChange={e => setContext(e.target.value)} className="grow" />
+      </div>
+      <textarea value={code} onChange={e => setCode(e.target.value)}
+        rows={10} spellCheck={false} className="code-input" />
+      <button onClick={doCompare} disabled={loading} className="primary">
+        {loading ? "Running both reviews…" : "⚖️ Compare: Generic vs Memory"}
+      </button>
+      {error && <div className="error">{error}</div>}
+
+      {cmp && (
+        <>
+          <div className="result-head">
+            <span className="badge">{added.length} team-specific added</span>
+            <span className="badge">{suppressed.length} nits suppressed</span>
+            <span className="badge badge-mem">🧠 {cmp.memory_count} memories applied</span>
+            {cmp.demo_fallback && <span className="badge badge-demo">demo fallback</span>}
+          </div>
+          <div className="compare-grid">
+            <div className="compare-col generic">
+              <h3>Generic AI Review</h3>
+              {suppressed.length > 0 && (
+                <p className="diff-note suppressed-note">
+                  ↓ {suppressed.length} of these disappear with team memory
+                </p>
+              )}
+              {cmp.generic.map(f => (
+                <div key={f.id} className={`finding-card ${!catsOf(cmp.personalized).has(f.category) ? "suppressed-view" : ""}`}>
+                  <div className="finding-head">
+                    <span className={`sev ${SEV_CLASS[f.severity] || "sev-medium"}`}>{f.severity}</span>
+                    <span className="fcat">{f.category}</span>
+                    {f.line != null && <span className="fline">line {f.line}</span>}
+                  </div>
+                  <p className="fmsg">{f.message}</p>
+                </div>
+              ))}
+              {cmp.generic.length === 0 && <p className="hint">No findings.</p>}
+            </div>
+            <div className="compare-col personal">
+              <h3>MemReview (with team memory)</h3>
+              {added.length > 0 && (
+                <p className="diff-note added-note">
+                  ↑ {added.length} team-specific findings added by memory
+                </p>
+              )}
+              {cmp.personalized.map(f => (
+                <div key={f.id} className={`finding-card ${!catsOf(cmp.generic).has(f.category) ? "added" : ""}`}>
+                  <div className="finding-head">
+                    <span className={`sev ${SEV_CLASS[f.severity] || "sev-medium"}`}>{f.severity}</span>
+                    <span className="fcat">{f.category}</span>
+                    {f.line != null && <span className="fline">line {f.line}</span>}
+                  </div>
+                  <p className="fmsg">{f.message}</p>
+                  {f.reason && (
+                    <div className="why-tag"><span className="why-label">Why am I seeing this?</span> {f.reason}</div>
+                  )}
+                </div>
+              ))}
+              {cmp.personalized.length === 0 && <p className="hint">No findings.</p>}
+            </div>
+          </div>
+          <MemoriesUsed memories={cmp.memories_used} />
+        </>
+      )}
+    </main>
+  );
+}
+
 function MemoriesUsed({ memories }) {
   if (!memories || memories.length === 0) return null;
   return (
@@ -213,7 +327,7 @@ export default function App() {
     toast(`Switched to team bank: ${v}`, "ok");
   };
 
-  const tabs = ["review", "memories", "reflect"];
+  const tabs = ["review", "compare", "memories", "reflect"];
 
   return (
     <div className="app">
@@ -238,7 +352,7 @@ export default function App() {
         <nav>
           {tabs.map(t => (
             <button key={t} className={tab === t ? "active" : ""} onClick={() => setTab(t)}>
-              {t === "review" ? "🔍 Review" : t === "memories" ? "🧠 Memory" : "💡 Reflect"}
+              {t === "review" ? "🔍 Review" : t === "compare" ? "⚖️ Compare" : t === "memories" ? "🧠 Memory" : "💡 Reflect"}
             </button>
           ))}
         </nav>
@@ -285,6 +399,8 @@ export default function App() {
           )}
         </main>
       )}
+
+      {tab === "compare" && <CompareTab bank={bank} toast={toast} />}
 
       {tab === "memories" && (
         <main>
