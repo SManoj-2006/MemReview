@@ -579,11 +579,11 @@ export default function App() {
         </main>
       )}
 
-      {tab === "compare" && <CompareTab bank={bank} toast={toast} />}
+      {tab === "compare" && <CompareTab key={"cmp:"+bank} bank={bank} toast={toast} />}
 
-      {tab === "playbook" && <PlaybookTab bank={bank} toast={toast} />}
+      {tab === "playbook" && <PlaybookTab key={"pb:"+bank} bank={bank} toast={toast} />}
 
-      {tab === "dashboard" && <DashboardTab bank={bank} toast={toast} />}
+      {tab === "dashboard" && <DashboardTab key={"dash:"+bank} bank={bank} toast={toast} />}
 
       {tab === "memories" && (
         <main>
