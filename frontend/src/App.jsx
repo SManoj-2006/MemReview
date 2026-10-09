@@ -37,6 +37,24 @@ const SAMPLES = {
  }`,
 };
 
+const DEMO_SNIPPETS = {
+  "🐍 SQL injection (python)": { language: "python", code:
+`def get_user(username):
+    query = "SELECT * FROM users WHERE name = '" + username + "'"
+    cur.execute(query)
+    return cur.fetchone()` },
+  "🌐 XSS via innerHTML (javascript)": { language: "javascript", code:
+`function renderComment(c) {
+  document.getElementById('feed').innerHTML = c.text;
+}` },
+  "✅ Clean code (contrast)": { language: "python", code:
+`def get_user(user_id: int) -> dict | None:
+    """Fetch a user by id using a parameterized query."""
+    cur.execute("SELECT id, name FROM users WHERE id = %s", (user_id,))
+    row = cur.fetchone()
+    return dict(row) if row else None` },
+};
+
 const SEV_CLASS = {
   critical: "sev-critical",
   high: "sev-high",
@@ -337,6 +355,7 @@ export default function App() {
   const [question, setQuestion] = useState("What recurring code issues has this team had?");
   const [answer, setAnswer] = useState("");
   const [reflectLoading, setReflectLoading] = useState(false);
+  const [seeding, setSeeding] = useState(false);
 
   const toast = (msg, kind = "info") => {
     const id = Date.now() + Math.random();
@@ -385,6 +404,29 @@ export default function App() {
     setReflectLoading(false);
   };
 
+  const doSeed = async () => {
+    setSeeding(true);
+    try {
+      const r = await fetch(`${API}/seed/demo`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bank }),
+      });
+      const j = await parseOrThrow(r);
+      toast(`Seeded ${j.memories_added} memories into ${j.bank} — 30 days of team history in seconds`, "ok");
+    } catch (e) { toast(String(e.message || e), "err"); }
+    setSeeding(false);
+  };
+
+  const loadSnippet = (name) => {
+    const s = DEMO_SNIPPETS[name];
+    if (!s) return;
+    setLanguage(s.language);
+    setCode(s.code);
+    setResult(null);
+    toast(`Loaded demo snippet: ${name}`, "info");
+  };
+
   const pickBank = (b) => {
     const v = (b || "").trim();
     if (!v) return;
@@ -428,6 +470,15 @@ export default function App() {
 
       {tab === "review" && (
         <main>
+          <div className="row">
+            <select value="" onChange={e => loadSnippet(e.target.value)}>
+              <option value="">🎬 Demo snippets…</option>
+              {Object.keys(DEMO_SNIPPETS).map(n => <option key={n} value={n}>{n}</option>)}
+            </select>
+            <button onClick={doSeed} disabled={seeding} title="Load ~10 realistic team memories">
+              {seeding ? "Seeding…" : "⏩ Simulate 30 days"}
+            </button>
+          </div>
           <div className="row">
             <select value={language} onChange={e => {
               setLanguage(e.target.value);

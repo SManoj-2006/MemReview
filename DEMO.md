@@ -47,3 +47,34 @@
 ## Backup Lines (if something breaks)
 - "Memory is the moat — generic AI forgets, MemReview learns."
 - "25% of the judging is memory. We made it 100% of the demo."
+
+## Demo snippets (also in the UI's "🎬 Demo snippets" dropdown)
+
+1. **SQL injection (python)** — triggers the recurring-pattern story after seeding:
+```python
+def get_user(username):
+    query = "SELECT * FROM users WHERE name = '" + username + "'"
+    cur.execute(query)
+    return cur.fetchone()
+```
+2. **XSS via innerHTML (javascript)**:
+```javascript
+function renderComment(c) {
+  document.getElementById('feed').innerHTML = c.text;
+}
+```
+3. **Clean code (contrast)** — shows "no findings" after never-flag/rejections kick in:
+```python
+def get_user(user_id: int) -> dict | None:
+    """Fetch a user by id using a parameterized query."""
+    cur.execute("SELECT id, name FROM users WHERE id = %s", (user_id,))
+    row = cur.fetchone()
+    return dict(row) if row else None
+```
+
+## 60-second judge demo flow
+1. Team: `demo-team` → click **⏩ Simulate 30 days**.
+2. Load the SQL injection snippet → **Review Code** → note the "Why am I seeing this?" recurring tag.
+3. Switch to the **Compare** tab → run the same snippet → show nits suppressed vs team-specific findings added.
+4. 👎 a finding or 🚫 a category → re-review → watch behavior change.
+5. **Playbook** tab → Generate → Download `.cursorrules`.
