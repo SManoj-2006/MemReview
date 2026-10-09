@@ -32,11 +32,14 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 import httpx
+from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ValidationError
 
 from groq import Groq
+
+load_dotenv()  # so backend/.env works out of the box (see RUN.md)
 
 app = FastAPI(title="MemReview API")
 
@@ -152,6 +155,7 @@ class FeedbackRequest(BaseModel):
     verdict: Optional[str] = None  # accepted | rejected | never_flag
     useful: Optional[bool] = None  # legacy boolean form
     comment: Optional[str] = ""
+    bank: Optional[str] = None
 
 
 class ReflectRequest(BaseModel):

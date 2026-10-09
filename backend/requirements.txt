@@ -4,3 +4,4 @@ groq
 hindsight-client
 python-multipart
 pydantic
+python-dotenv
