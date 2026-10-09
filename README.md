@@ -90,3 +90,50 @@ Open http://localhost:5173
 - **Technical (20%):** Clean FastAPI + React, handles edge cases
 - **UX (15%):** Simple paste-and-review flow with visible memory timeline
 - **Impact (10%):** Every dev team needs better code review
+
+## Features (hackathon build)
+
+- **Structured findings** — every review returns `{id, category, severity, line, message, suggestion, reason}` via Groq JSON mode (validated with Pydantic; never 500s on parse errors).
+- **⚖️ Compare tab** — `POST /review/compare` runs the same code twice (generic vs with team memory); side-by-side panels highlight added team-specific findings and suppressed nits.
+- **Feedback loop** — each finding has 👍 / 👎 / 🚫 "never flag this" buttons. `POST /feedback` retains structured memory (`Team REJECTED finding category=comments`, `Team will NEVER FLAG category=style`). Rejected categories are down-ranked in the prompt; never-flagged categories are hard-filtered server-side.
+- **Memory provenance** — every finding carries a `reason` citing the memory that influenced it, shown as a "Why am I seeing this?" tag (🔁 badge when the pattern is recurring in team memory).
+- **📖 Playbook** — `POST /playbook` uses Hindsight `reflect` to generate Team Coding Standards; download as Markdown or `.cursorrules`.
+- **⏩ Demo seeding** — `POST /seed/demo` loads ~10 realistic memories ("Simulate 30 days" button); 3 ready-to-paste demo snippets in the UI.
+- **📊 Dashboard** — `GET /dashboard/stats`: top recurring categories, nits suppressed, noise-reduced %, learning timeline.
+- **Team switcher** — per-team memory banks (`bank` param on every endpoint); memory is isolated per team.
+- **PR review** — paste a GitHub PR URL; the diff is fetched via the public GitHub API and reviewed.
+- **DEMO_MODE** — `DEMO_MODE=true` (or missing Groq key / LLM timeout) returns canned structured findings so a live demo never dies.
+
+## How Hindsight memory is used
+
+| Operation | Where | What it does |
+|---|---|---|
+| `retain` | after each review | stores finding categories + context |
+| `retain` | per-finding feedback | stores `ACCEPTED` / `REJECTED` / `NEVER FLAG category=X` preference memories |
+| `retain` | `/seed/demo` | loads realistic team history for demos |
+| `recall` | before each review | fetches team standards, preferences, past feedback; builds the prompt's memory section |
+| `recall` | never-flag filter | parses `NEVER FLAG category=X` directives → hard-filtered server-side |
+| `reflect` | `/reflect`, `/playbook` | synthesizes patterns ("Team Coding Standards") across all memories |
+
+Memory is isolated per team via the `bank` parameter (Hindsight `bank_id`).
+
+## Screenshots
+
+_Screenshots go here — capture during the live demo:_
+- `docs/review-findings.png` — Review tab with finding cards + why-tags
+- `docs/compare.png` — Compare tab side-by-side diff
+- `docs/dashboard.png` — Dashboard stats
+- `docs/playbook.png` — Generated playbook
+
+## Quick start
+
+```bash
+# backend
+cd backend && cp .env.example .env   # fill in GROQ_API_KEY
+.venv/bin/python -m uvicorn main:app --reload --port 8000
+
+# frontend
+cd frontend && npm install && npm run dev   # http://localhost:5173
+```
+
+Set `DEMO_MODE=true` in `backend/.env` for a bulletproof demo without LLM dependency.
