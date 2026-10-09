@@ -104,8 +104,11 @@ function FindingCard({ f, bank, onFeedbackDone, toast }) {
         <p className="fsugg"><strong>Fix:</strong> {f.suggestion}</p>
       )}
       {f.reason && (
-        <div className="why-tag" title={f.reason}>
-          <span className="why-label">Why am I seeing this?</span> {f.reason}
+        <div className={`why-tag ${/recurring/i.test(f.reason) ? "why-recurring" : ""}`} title={f.reason}>
+          <span className="why-label">
+            {/recurring/i.test(f.reason) ? "🔁 Why am I seeing this? (recurring)" : "Why am I seeing this?"}
+          </span>{" "}
+          {f.reason}
         </div>
       )}
       <div className="frow">

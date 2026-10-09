@@ -109,3 +109,5 @@ footer { text-align: center; color: #5a5e70; font-size: 12px; margin-top: 32px; 
 /* --- playbook --- */
 .playbook-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 h2.tab-title { margin: 4px 0; font-size: 1.2rem; }
+.why-recurring { border-color: #7a5f2e; background: #2e2414; }
+.why-recurring .why-label { color: #ffce7a; }
