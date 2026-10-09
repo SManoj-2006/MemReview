@@ -27,6 +27,20 @@ button:not(.primary):not(nav button) { background: #1a1d27; color: #cfd3e0; bord
 .mem-used summary { cursor: pointer; color: #9aa0b0; }
 .mem-used ul { margin: 8px 0 0; padding-left: 18px; color: #cfd3e0; }
 .review-text { background: #151824; border: 1px solid #2a2e3d; border-radius: 8px; padding: 16px; white-space: pre-wrap; font-size: 14px; line-height: 1.6; }
+.markdown { white-space: normal; }
+.markdown > *:first-child { margin-top: 0; }
+.markdown > *:last-child { margin-bottom: 0; }
+.markdown h1, .markdown h2, .markdown h3 { color: #fff; margin: 14px 0 8px; }
+.markdown h1 { font-size: 1.25rem; } .markdown h2 { font-size: 1.1rem; } .markdown h3 { font-size: 1rem; }
+.markdown p, .markdown ul, .markdown ol { margin: 8px 0; }
+.markdown ul, .markdown ol { padding-left: 20px; }
+.markdown li { margin: 4px 0; }
+.markdown code { background: #0f1117; border: 1px solid #2a2e3d; border-radius: 4px; padding: 1px 5px; font-size: 13px; font-family: Consolas, monospace; }
+.markdown pre { background: #0f1117; border: 1px solid #2a2e3d; border-radius: 8px; padding: 12px; overflow-x: auto; }
+.markdown pre code { background: none; border: none; padding: 0; }
+.markdown blockquote { border-left: 3px solid #4f46e5; margin: 8px 0; padding: 4px 12px; color: #9aa0b0; }
+.markdown strong { color: #fff; }
+.markdown hr { border: none; border-top: 1px solid #2a2e3d; margin: 12px 0; }
 .feedback { background: #151824; border: 1px solid #2a2e3d; border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
 .memory-card { background: #151824; border: 1px solid #2a2e3d; border-left: 3px solid #4f46e5; border-radius: 8px; padding: 12px; font-size: 14px; }
 footer { text-align: center; color: #5a5e70; font-size: 12px; margin-top: 32px; }

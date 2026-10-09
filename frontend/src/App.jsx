@@ -1,4 +1,5 @@
 import { useState } from "react";
+import ReactMarkdown from "react-markdown";
 import "./App.css";
 
 const API = import.meta.env.VITE_API_URL || "http://localhost:8000";
@@ -18,12 +19,35 @@ const SAMPLES = {
       return u;
     });
 }`,
+  java: `public User findUser(String username) throws SQLException {
+    Statement stmt = conn.createStatement();
+    String sql = "SELECT * FROM users WHERE username = '" + username + "'";
+    ResultSet rs = stmt.executeQuery(sql);
+    if (rs.next()) {
+        return new User(rs.getString("name"), rs.getString("pw"));
+    }
+    return null;
+}`,
+  go: `func getUser(db *sql.DB, id string) (*User, error) {
+	query := fmt.Sprintf("SELECT * FROM users WHERE id = '%s'", id)
+	row := db.QueryRow(query)
+	var u User
+	err := row.Scan(&u.ID, &u.Name)
+	return &u, err
+}`,
 };
 
 function MemoryBadge({ count }) {
   if (count === 0)
     return <span className="badge badge-new">first review — no memories yet</span>;
   return <span className="badge badge-mem">🧠 {count} memories applied</span>;
+}
+
+async function parseOrThrow(r) {
+  let body = null;
+  try { body = await r.json(); } catch { /* non-JSON error body */ }
+  if (!r.ok) throw new Error((body && body.detail) || r.statusText);
+  return body;
 }
 
 export default function App() {
@@ -52,42 +76,43 @@ export default function App() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ code, language, context }),
       });
-      if (!r.ok) throw new Error((await r.json()).detail || r.statusText);
-      setResult(await r.json());
+      setResult(await parseOrThrow(r));
     } catch (e) { setError(String(e.message || e)); }
     setLoading(false);
   };
 
   const sendFeedback = async (useful) => {
     try {
-      await fetch(`${API}/feedback`, {
+      const r = await fetch(`${API}/feedback`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ review_id: result.review_id, useful, comment: fbComment }),
       });
+      await parseOrThrow(r);
       setFbDone(true);
     } catch (e) { setError(String(e.message || e)); }
   };
 
   const loadMemories = async () => {
+    setError("");
     try {
       const r = await fetch(`${API}/memories?query=${encodeURIComponent(memQuery)}`);
-      const j = await r.json();
+      const j = await parseOrThrow(r);
       setMemories(j.memories || []);
     } catch (e) { setError(String(e.message || e)); }
   };
 
   const doReflect = async () => {
-    setAnswer("thinking...");
+    setAnswer("thinking..."); setError("");
     try {
       const r = await fetch(`${API}/reflect`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ question }),
       });
-      const j = await r.json();
+      const j = await parseOrThrow(r);
       setAnswer(j.answer);
-    } catch (e) { setAnswer(String(e.message || e)); }
+    } catch (e) { setAnswer(""); setError(String(e.message || e)); }
   };
 
   return (
@@ -137,7 +162,9 @@ export default function App() {
                   <ul>{result.memories_used.map((m, i) => <li key={i}>{m}</li>)}</ul>
                 </details>
               )}
-              <pre className="review-text">{result.review}</pre>
+              <div className="review-text markdown">
+                <ReactMarkdown>{result.review}</ReactMarkdown>
+              </div>
               {!fbDone ? (
                 <div className="feedback">
                   <p>Was this review useful?</p>
@@ -171,7 +198,12 @@ export default function App() {
         <main>
           <input value={question} onChange={e => setQuestion(e.target.value)} className="grow" />
           <button onClick={doReflect} className="primary">Ask Memory</button>
-          {answer && <pre className="review-text">{answer}</pre>}
+          {error && <div className="error">{error}</div>}
+          {answer && (
+            <div className="review-text markdown">
+              <ReactMarkdown>{answer}</ReactMarkdown>
+            </div>
+          )}
           <p className="hint">Hindsight <em>reflect</em> synthesizes patterns across all stored memories.</p>
         </main>
       )}

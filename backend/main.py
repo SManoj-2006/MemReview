@@ -11,6 +11,7 @@ Flow:
 4. GET /reflect — ask Hindsight to synthesize patterns across all memories
 """
 
+import asyncio
 import os
 import uuid
 from typing import Optional
@@ -36,6 +37,10 @@ HINDSIGHT_URL = os.getenv("HINDSIGHT_URL", "http://localhost:8888")
 HINDSIGHT_TOKEN = os.getenv("HINDSIGHT_TOKEN", "")
 BANK_NAME = os.getenv("HINDSIGHT_BANK", "memreview-team")
 
+MAX_CODE_LEN = 20000  # hard cap to protect the LLM context window
+GROQ_TIMEOUT = 60  # seconds
+HEALTH_CHECK_TIMEOUT = 5  # seconds
+
 groq_client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
 
 # Lazy Hindsight client — lightweight hindsight-client package
@@ -52,6 +57,19 @@ def get_hindsight():
             kwargs["api_key"] = HINDSIGHT_TOKEN
         _hs_client = Hindsight(**kwargs)
     return _hs_client
+
+
+async def hindsight_reachable() -> bool:
+    """Cheap liveness probe: a tiny recall with a short timeout."""
+    try:
+        hs = get_hindsight()
+        await asyncio.wait_for(
+            hs.arecall(bank_id=BANK_NAME, query="health check", max_tokens=16),
+            timeout=HEALTH_CHECK_TIMEOUT,
+        )
+        return True
+    except Exception:
+        return False
 
 
 # --- Models ---
@@ -88,11 +106,12 @@ Guidelines:
 
 
 @app.get("/health")
-def health():
+async def health():
     return {
         "status": "ok",
         "groq_configured": bool(GROQ_API_KEY),
         "hindsight_url": HINDSIGHT_URL,
+        "hindsight_reachable": await hindsight_reachable(),
         "model": GROQ_MODEL,
     }
 
@@ -103,6 +122,11 @@ async def review_code(req: ReviewRequest):
         raise HTTPException(500, "GROQ_API_KEY not configured")
     if not req.code.strip():
         raise HTTPException(400, "Empty code")
+    if len(req.code) > MAX_CODE_LEN:
+        raise HTTPException(
+            400,
+            f"Code too long ({len(req.code)} chars). Maximum is {MAX_CODE_LEN} characters.",
+        )
 
     review_id = uuid.uuid4().hex[:8]
 
@@ -113,7 +137,7 @@ async def review_code(req: ReviewRequest):
         hs = get_hindsight()
         results = await hs.arecall(
             bank_id=BANK_NAME,
-            query=f"team coding standards, review preferences, and past feedback",
+            query="team coding standards, review preferences, and past feedback",
         )
         items = results if isinstance(results, list) else getattr(results, "results", []) or []
         for item in items[:8]:
@@ -137,11 +161,12 @@ async def review_code(req: ReviewRequest):
         else "TEAM MEMORY: none yet — this is a first review. Give a solid general review."
     )
 
-    # 2. REVIEW via Groq
+    # 2. REVIEW via Groq (sync SDK run in a thread, with a hard timeout)
     system = REVIEW_SYSTEM.format(memories_section=memories_section)
     user_msg = f"Language: {req.language}\nContext: {req.context or 'none'}\n\n```{req.language}\n{req.code}\n```"
-    try:
-        completion = groq_client.chat.completions.create(
+
+    def _call_groq():
+        return groq_client.chat.completions.create(
             model=GROQ_MODEL,
             messages=[
                 {"role": "system", "content": system},
@@ -150,14 +175,23 @@ async def review_code(req: ReviewRequest):
             temperature=0.3,
             max_tokens=2000,
         )
+
+    try:
+        completion = await asyncio.wait_for(
+            asyncio.to_thread(_call_groq), timeout=GROQ_TIMEOUT
+        )
         review_text = completion.choices[0].message.content
+    except asyncio.TimeoutError:
+        raise HTTPException(504, f"LLM request timed out after {GROQ_TIMEOUT}s")
     except Exception as e:
         raise HTTPException(502, f"LLM error: {e}")
 
-    # 3. RETAIN — store this review so the agent learns
+    # 3. RETAIN — store this review so the agent learns.
+    # retain_async=True is a real hindsight-client kwarg: process in background.
     try:
         hs = get_hindsight()
-        await hs.aretain(retain_async=True, 
+        await hs.aretain(
+            retain_async=True,
             bank_id=BANK_NAME,
             content=(
                 f"Code review ({req.language}, id={review_id}):\n"
@@ -182,7 +216,8 @@ async def submit_feedback(req: FeedbackRequest):
     try:
         hs = get_hindsight()
         verdict = "found USEFUL" if req.useful else "REJECTED as not useful"
-        await hs.aretain(retain_async=True, 
+        await hs.aretain(
+            retain_async=True,
             bank_id=BANK_NAME,
             content=(
                 f"Developer feedback on review {req.review_id}: {verdict}. "
