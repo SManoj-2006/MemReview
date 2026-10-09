@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
 import "./App.css";
 
@@ -262,6 +262,68 @@ function CompareTab({ bank, toast }) {
   );
 }
 
+function DashboardTab({ bank, toast }) {
+  const [stats, setStats] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const load = async () => {
+    setLoading(true); setError("");
+    try {
+      const r = await fetch(`${API}/dashboard/stats?bank=${encodeURIComponent(bank)}`);
+      setStats(await parseOrThrow(r));
+    } catch (e) { setError(String(e.message || e)); }
+    setLoading(false);
+  };
+
+  useEffect(() => { load(); }, [bank]);
+
+  const maxCount = stats && stats.top_categories.length
+    ? Math.max(...stats.top_categories.map(c => c.count)) : 1;
+
+  return (
+    <main>
+      <h2 className="tab-title">📊 Team Dashboard</h2>
+      <p className="hint">What the agent has learned about <strong>{bank}</strong>.</p>
+      <div className="playbook-actions">
+        <button onClick={load} disabled={loading}>{loading ? "Loading…" : "↻ Refresh"}</button>
+      </div>
+      {error && <div className="error">{error}</div>}
+      {stats && (
+        <>
+          <div className="stat-cards">
+            <div className="stat-card"><div className="num">{stats.reviews_run}</div><div className="lbl">reviews run</div></div>
+            <div className="stat-card"><div className="num">{stats.findings_served}</div><div className="lbl">findings served</div></div>
+            <div className="stat-card"><div className="num">{stats.suppressed_count}</div><div className="lbl">nits suppressed</div></div>
+            <div className="stat-card"><div className="num">{stats.noise_reduced_pct}%</div><div className="lbl">noise reduced</div></div>
+          </div>
+          <h3>Top recurring categories</h3>
+          {stats.top_categories.length === 0 && <p className="hint">No categorized memories yet.</p>}
+          {stats.top_categories.map(c => (
+            <div key={c.category} className="bar-row">
+              <span className="bcat">{c.category}</span>
+              <div className="bar-track">
+                <div className="bar-fill" style={{ width: `${(c.count / maxCount) * 100}%` }} />
+              </div>
+              <span>{c.count}</span>
+            </div>
+          ))}
+          <h3>Learning timeline</h3>
+          <div className="timeline">
+            {stats.timeline.map((t, i) => (
+              <div key={i} className="tl-item">
+                <div>{t.event}</div>
+                <div className="mts">{t.ts}</div>
+              </div>
+            ))}
+            {stats.timeline.length === 0 && <p className="hint">Nothing retained yet.</p>}
+          </div>
+        </>
+      )}
+    </main>
+  );
+}
+
 function PlaybookTab({ bank, toast }) {
   const [md, setMd] = useState("");
   const [loading, setLoading] = useState(false);
@@ -435,7 +497,7 @@ export default function App() {
     toast(`Switched to team bank: ${v}`, "ok");
   };
 
-  const tabs = ["review", "compare", "memories", "reflect", "playbook"];
+  const tabs = ["review", "compare", "memories", "reflect", "playbook", "dashboard"];
 
   return (
     <div className="app">
@@ -460,7 +522,7 @@ export default function App() {
         <nav>
           {tabs.map(t => (
             <button key={t} className={tab === t ? "active" : ""} onClick={() => setTab(t)}>
-              {t === "review" ? "🔍 Review" : t === "compare" ? "⚖️ Compare" : t === "memories" ? "🧠 Memory" : t === "playbook" ? "📖 Playbook" : "💡 Reflect"}
+              {t === "review" ? "🔍 Review" : t === "compare" ? "⚖️ Compare" : t === "memories" ? "🧠 Memory" : t === "playbook" ? "📖 Playbook" : t === "dashboard" ? "📊 Dashboard" : "💡 Reflect"}
             </button>
           ))}
         </nav>
@@ -520,6 +582,8 @@ export default function App() {
       {tab === "compare" && <CompareTab bank={bank} toast={toast} />}
 
       {tab === "playbook" && <PlaybookTab bank={bank} toast={toast} />}
+
+      {tab === "dashboard" && <DashboardTab bank={bank} toast={toast} />}
 
       {tab === "memories" && (
         <main>
