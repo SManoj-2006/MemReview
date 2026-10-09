@@ -34,14 +34,16 @@ const SAMPLES = {
 	var u User
 	err := row.Scan(&u.ID, &u.Name)
 	return &u, err
-}`,
+ }`,
 };
 
-function MemoryBadge({ count }) {
-  if (count === 0)
-    return <span className="badge badge-new">first review — no memories yet</span>;
-  return <span className="badge badge-mem">🧠 {count} memories applied</span>;
-}
+const SEV_CLASS = {
+  critical: "sev-critical",
+  high: "sev-high",
+  medium: "sev-medium",
+  low: "sev-low",
+  nit: "sev-nit",
+};
 
 async function parseOrThrow(r) {
   let body = null;
@@ -50,8 +52,97 @@ async function parseOrThrow(r) {
   return body;
 }
 
+function Toasts({ toasts }) {
+  return (
+    <div className="toasts">
+      {toasts.map(t => (
+        <div key={t.id} className={`toast toast-${t.kind}`}>{t.msg}</div>
+      ))}
+    </div>
+  );
+}
+
+function FindingCard({ f, bank, onFeedbackDone, toast }) {
+  const [fbState, setFbState] = useState(null); // accepted | rejected | never_flag
+  const [busy, setBusy] = useState(false);
+
+  const send = async (verdict) => {
+    setBusy(true);
+    try {
+      await parseOrThrow(await fetch(`${API}/feedback`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          review_id: f._review_id, finding_id: f.id,
+          category: f.category, severity: f.severity,
+          verdict, bank,
+        }),
+      }));
+      setFbState(verdict);
+      toast(
+        verdict === "never_flag"
+          ? `Memorized: never flag ${f.category} again`
+          : verdict === "accepted"
+            ? `Feedback saved: ${f.category} accepted`
+            : `Feedback saved: ${f.category} rejected`,
+        "ok"
+      );
+      if (onFeedbackDone) onFeedbackDone(f, verdict);
+    } catch (e) { toast(String(e.message || e), "err"); }
+    setBusy(false);
+  };
+
+  return (
+    <div className="finding-card">
+      <div className="finding-head">
+        <span className={`sev ${SEV_CLASS[f.severity] || "sev-medium"}`}>{f.severity}</span>
+        <span className="fcat">{f.category}</span>
+        {f.line != null && <span className="fline">line {f.line}</span>}
+      </div>
+      <p className="fmsg">{f.message}</p>
+      {f.suggestion && (
+        <p className="fsugg"><strong>Fix:</strong> {f.suggestion}</p>
+      )}
+      {f.reason && (
+        <div className="why-tag" title={f.reason}>
+          <span className="why-label">Why am I seeing this?</span> {f.reason}
+        </div>
+      )}
+      <div className="frow">
+        <button disabled={busy || fbState} onClick={() => send("accepted")}
+          className={fbState === "accepted" ? "fb-on" : ""} title="This finding was useful">
+          👍 {fbState === "accepted" ? "Accepted" : "Useful"}
+        </button>
+        <button disabled={busy || fbState} onClick={() => send("rejected")}
+          className={fbState === "rejected" ? "fb-on" : ""} title="This finding was not useful">
+          👎 {fbState === "rejected" ? "Rejected" : "Not useful"}
+        </button>
+        <button disabled={busy || fbState} onClick={() => send("never_flag")}
+          className={`never ${fbState === "never_flag" ? "fb-on" : ""}`}
+          title="Never flag this category again">
+          🚫 {fbState === "never_flag" ? "Never again" : "Never flag this"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function MemoriesUsed({ memories }) {
+  if (!memories || memories.length === 0) return null;
+  return (
+    <details className="mem-used">
+      <summary>Memories used in this review ({memories.length})</summary>
+      <ul>{memories.map((m, i) => <li key={i}>{m}</li>)}</ul>
+    </details>
+  );
+}
+
 export default function App() {
   const [tab, setTab] = useState("review");
+  const [bank, setBank] = useState("demo-team");
+  const [customBank, setCustomBank] = useState("");
+  const [toasts, setToasts] = useState([]);
+
   const [code, setCode] = useState(SAMPLES.python);
   const [language, setLanguage] = useState("python");
   const [context, setContext] = useState("");
@@ -59,75 +150,101 @@ export default function App() {
   const [result, setResult] = useState(null);
   const [error, setError] = useState("");
 
-  const [fbComment, setFbComment] = useState("");
-  const [fbDone, setFbDone] = useState(false);
-
   const [memories, setMemories] = useState([]);
   const [memQuery, setMemQuery] = useState("");
+  const [memLoading, setMemLoading] = useState(false);
 
   const [question, setQuestion] = useState("What recurring code issues has this team had?");
   const [answer, setAnswer] = useState("");
+  const [reflectLoading, setReflectLoading] = useState(false);
+
+  const toast = (msg, kind = "info") => {
+    const id = Date.now() + Math.random();
+    setToasts(ts => [...ts, { id, msg, kind }]);
+    setTimeout(() => setToasts(ts => ts.filter(t => t.id !== id)), 4000);
+  };
 
   const doReview = async () => {
-    setLoading(true); setError(""); setResult(null); setFbDone(false); setFbComment("");
+    setLoading(true); setError(""); setResult(null);
     try {
       const r = await fetch(`${API}/review`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code, language, context }),
+        body: JSON.stringify({ code, language, context, bank }),
       });
-      setResult(await parseOrThrow(r));
+      const j = await parseOrThrow(r);
+      setResult({ ...j, findings: j.findings.map(f => ({ ...f, _review_id: j.review_id })) });
+      if (j.demo_fallback) toast("Demo fallback: LLM unavailable, showing canned findings", "info");
+      if (j.suppressed && j.suppressed.length)
+        toast(`Suppressed ${j.suppressed.length} finding(s) per team preferences: ${j.suppressed.join(", ")}`, "ok");
     } catch (e) { setError(String(e.message || e)); }
     setLoading(false);
   };
 
-  const sendFeedback = async (useful) => {
-    try {
-      const r = await fetch(`${API}/feedback`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ review_id: result.review_id, useful, comment: fbComment }),
-      });
-      await parseOrThrow(r);
-      setFbDone(true);
-    } catch (e) { setError(String(e.message || e)); }
-  };
-
   const loadMemories = async () => {
-    setError("");
+    setError(""); setMemLoading(true);
     try {
-      const r = await fetch(`${API}/memories?query=${encodeURIComponent(memQuery)}`);
+      const r = await fetch(`${API}/memories?query=${encodeURIComponent(memQuery)}&bank=${encodeURIComponent(bank)}`);
       const j = await parseOrThrow(r);
       setMemories(j.memories || []);
     } catch (e) { setError(String(e.message || e)); }
+    setMemLoading(false);
   };
 
   const doReflect = async () => {
-    setAnswer("thinking..."); setError("");
+    setAnswer(""); setError(""); setReflectLoading(true);
     try {
       const r = await fetch(`${API}/reflect`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question }),
+        body: JSON.stringify({ question, bank }),
       });
       const j = await parseOrThrow(r);
       setAnswer(j.answer);
-    } catch (e) { setAnswer(""); setError(String(e.message || e)); }
+    } catch (e) { setError(String(e.message || e)); }
+    setReflectLoading(false);
   };
+
+  const pickBank = (b) => {
+    const v = (b || "").trim();
+    if (!v) return;
+    setBank(v); setCustomBank("");
+    setResult(null); setMemories([]); setAnswer("");
+    toast(`Switched to team bank: ${v}`, "ok");
+  };
+
+  const tabs = ["review", "memories", "reflect"];
 
   return (
     <div className="app">
+      <Toasts toasts={toasts} />
       <header>
         <h1>🧠 MemReview</h1>
         <p className="sub">AI code review that <em>remembers</em> your team's standards</p>
+        <div className="team-switcher">
+          <label>Team:</label>
+          <select value={["demo-team", "team-alpha", "team-beta"].includes(bank) ? bank : "__custom"}
+            onChange={e => pickBank(e.target.value === "__custom" ? customBank : e.target.value)}>
+            <option value="demo-team">demo-team</option>
+            <option value="team-alpha">team-alpha</option>
+            <option value="team-beta">team-beta</option>
+            <option value="__custom">{bank} (custom)</option>
+          </select>
+          <input placeholder="new team…" value={customBank}
+            onChange={e => setCustomBank(e.target.value)}
+            onKeyDown={e => e.key === "Enter" && pickBank(customBank)} />
+          <button onClick={() => pickBank(customBank)}>Use</button>
+        </div>
         <nav>
-          {["review", "memories", "reflect"].map(t => (
+          {tabs.map(t => (
             <button key={t} className={tab === t ? "active" : ""} onClick={() => setTab(t)}>
               {t === "review" ? "🔍 Review" : t === "memories" ? "🧠 Memory" : "💡 Reflect"}
             </button>
           ))}
         </nav>
       </header>
+
+      {error && <div className="error banner">{error}</div>}
 
       {tab === "review" && (
         <main>
@@ -147,35 +264,23 @@ export default function App() {
           <textarea value={code} onChange={e => setCode(e.target.value)}
             rows={12} spellCheck={false} className="code-input" />
           <button onClick={doReview} disabled={loading} className="primary">
-            {loading ? "Reviewing with memory..." : "Review Code"}
+            {loading ? "Reviewing with memory…" : "Review Code"}
           </button>
-          {error && <div className="error">{error}</div>}
 
           {result && (
             <div className="result">
               <div className="result-head">
-                <MemoryBadge count={result.memory_count} />
+                <span className="badge badge-mem">🧠 {result.memory_count} memories applied</span>
+                {result.demo_fallback && <span className="badge badge-demo">demo fallback</span>}
+                <span className="badge">{result.findings.length} findings</span>
               </div>
-              {result.memories_used?.length > 0 && (
-                <details className="mem-used">
-                  <summary>Memories applied to this review</summary>
-                  <ul>{result.memories_used.map((m, i) => <li key={i}>{m}</li>)}</ul>
-                </details>
+              <MemoriesUsed memories={result.memories_used} />
+              {result.findings.length === 0 && (
+                <p className="hint">No findings — clean code, or everything was suppressed by team preferences.</p>
               )}
-              <div className="review-text markdown">
-                <ReactMarkdown>{result.review}</ReactMarkdown>
-              </div>
-              {!fbDone ? (
-                <div className="feedback">
-                  <p>Was this review useful?</p>
-                  <input placeholder="Tell the agent what to remember (optional)"
-                    value={fbComment} onChange={e => setFbComment(e.target.value)} className="grow" />
-                  <div className="row">
-                    <button onClick={() => sendFeedback(true)}>👍 Useful</button>
-                    <button onClick={() => sendFeedback(false)}>👎 Not useful</button>
-                  </div>
-                </div>
-              ) : <p className="ok">✓ Feedback saved to memory — future reviews will adapt.</p>}
+              {result.findings.map(f => (
+                <FindingCard key={f.id} f={f} bank={bank} toast={toast} />
+              ))}
             </div>
           )}
         </main>
@@ -186,29 +291,39 @@ export default function App() {
           <div className="row">
             <input placeholder="Search memories..." value={memQuery}
               onChange={e => setMemQuery(e.target.value)} className="grow" />
-            <button onClick={loadMemories}>Search</button>
+            <button onClick={loadMemories} disabled={memLoading}>
+              {memLoading ? "Searching…" : "Search"}
+            </button>
           </div>
-          <p className="hint">Everything the agent remembers about your team. This is the Hindsight memory bank.</p>
-          {memories.map((m, i) => <div key={i} className="memory-card">{m.text}</div>)}
-          {memories.length === 0 && <p className="hint">No memories yet — do a review first.</p>}
+          <p className="hint">Everything the agent remembers about <strong>{bank}</strong>. This is the Hindsight memory bank.</p>
+          {memories.map((m, i) => (
+            <div key={i} className="memory-card">
+              <div>{m.text}</div>
+              {m.ts && <div className="mts">{m.ts}</div>}
+            </div>
+          ))}
+          {memories.length === 0 && !memLoading && <p className="hint">No memories yet — do a review first.</p>}
         </main>
       )}
 
       {tab === "reflect" && (
         <main>
-          <input value={question} onChange={e => setQuestion(e.target.value)} className="grow" />
-          <button onClick={doReflect} className="primary">Ask Memory</button>
-          {error && <div className="error">{error}</div>}
+          <div className="row">
+            <input value={question} onChange={e => setQuestion(e.target.value)} className="grow" />
+            <button onClick={doReflect} disabled={reflectLoading} className="primary">
+              {reflectLoading ? "Thinking…" : "Ask Memory"}
+            </button>
+          </div>
           {answer && (
             <div className="review-text markdown">
               <ReactMarkdown>{answer}</ReactMarkdown>
             </div>
           )}
-          <p className="hint">Hindsight <em>reflect</em> synthesizes patterns across all stored memories.</p>
+          <p className="hint">Hindsight <em>reflect</em> synthesizes patterns across all stored memories for <strong>{bank}</strong>.</p>
         </main>
       )}
 
-      <footer>Built for Hack with Hyderabad 3.0 · Hindsight + Groq</footer>
+      <footer>Built for hackathons · Hindsight + Groq · bank: {bank}</footer>
     </div>
   );
 }
