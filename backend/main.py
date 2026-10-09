@@ -212,6 +212,22 @@ NEVER_FLAG_RE = re.compile(
 )
 
 
+REJECTED_RE = re.compile(
+    r"team rejected finding category\s*=\s*([a-z0-9_]+)", re.IGNORECASE
+)
+
+
+def extract_rejected_categories(memories: List[str]) -> List[str]:
+    """Categories the team rejected (down-rank) but didn't never-flag (hard ban)."""
+    cats = []
+    for m in memories:
+        for match in REJECTED_RE.finditer(m):
+            c = match.group(1).lower()
+            if c not in cats:
+                cats.append(c)
+    return cats
+
+
 def extract_never_flag_categories(memories: List[str]) -> List[str]:
     """Parse 'NEVER FLAG category=X' directives out of recalled memories."""
     cats = []
@@ -241,12 +257,14 @@ REVIEW_SYSTEM_JSON = """You are MemReview, an expert code reviewer. Respond with
 
 {memories_section}
 {never_flag_section}
+{downranked_section}
 
 Rules:
 - category: snake_case, e.g. sql_injection, xss, hardcoded_secret, error_handling, comments, style, performance, composition, best_practice, general
 - severity: critical | high | medium | low | nit
 - reason: cite the SPECIFIC team memory that influenced this finding (short quote). If none applies, write "general best practice".
 - NEVER emit findings in the rejected categories listed above — the team has banned them.
+- Down-ranked categories: only emit if genuinely severe.
 - Prioritize: security > correctness > performance > readability > style. Max 8 findings. No filler.
 """
 
@@ -360,7 +378,9 @@ async def llm_findings(
         ], False
 
 
-def build_sections(memories: List[str], never_flag: List[str], generic: bool = False) -> tuple[str, str]:
+def build_sections(
+    memories: List[str], never_flag: List[str], downranked: List[str], generic: bool = False
+) -> tuple[str, str, str]:
     if generic or not memories:
         mem_section = (
             "TEAM MEMORY: none — this is a generic review. "
@@ -375,7 +395,14 @@ def build_sections(memories: List[str], never_flag: List[str], generic: bool = F
         )
     else:
         nf_section = "REJECTED CATEGORIES: none."
-    return mem_section, nf_section
+    if downranked:
+        dr_section = (
+            "DOWN-RANKED CATEGORIES — the team rejected these before; only emit "
+            "them if the issue is genuinely severe, otherwise skip: " + ", ".join(downranked)
+        )
+    else:
+        dr_section = "DOWN-RANKED CATEGORIES: none."
+    return mem_section, nf_section, dr_section
 
 
 async def run_review(
@@ -394,6 +421,8 @@ async def run_review(
         bank, "team coding standards, review preferences, and past feedback", limit=10
     ) if use_memory else []
     never_flag = extract_never_flag_categories(memories) if use_memory else []
+    downranked = [c for c in extract_rejected_categories(memories)
+                  if c not in never_flag] if use_memory else []
 
     # 2. REVIEW
     demo_fallback = False
@@ -401,9 +430,12 @@ async def run_review(
         findings = _canned_findings(language, personalized=demo_personalized or use_memory)
         demo_fallback = True
     else:
-        mem_section, nf_section = build_sections(memories, never_flag, generic=not use_memory)
+        mem_section, nf_section, dr_section = build_sections(
+            memories, never_flag, downranked, generic=not use_memory
+        )
         system = REVIEW_SYSTEM_JSON.format(
-            memories_section=mem_section, never_flag_section=nf_section
+            memories_section=mem_section, never_flag_section=nf_section,
+            downranked_section=dr_section,
         )
         user_msg = (
             f"Language: {language}\nContext: {context or 'none'}\n\n"

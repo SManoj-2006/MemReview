@@ -158,3 +158,14 @@ def test_pr_url_validation(monkeypatch):
     client = load_app(monkeypatch, groq_key="test-key")
     r = client.post("/review/pr", json={"pr_url": "not a url"})
     assert r.status_code == 400
+
+
+def test_rejected_category_extraction():
+    import main
+    mems = [
+        "Team REJECTED finding category=comments severity=nit. Down-rank this category.",
+        "Team will NEVER FLAG category=style. Never emit findings in this category again.",
+    ]
+    assert main.extract_rejected_categories(mems) == ["comments"]
+    # never_flag takes precedence in run_review (filtered out of downranked)
+    assert main.extract_never_flag_categories(mems) == ["style"]
