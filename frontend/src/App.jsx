@@ -418,6 +418,8 @@ export default function App() {
   const [answer, setAnswer] = useState("");
   const [reflectLoading, setReflectLoading] = useState(false);
   const [seeding, setSeeding] = useState(false);
+  const [prUrl, setPrUrl] = useState("");
+  const [prLoading, setPrLoading] = useState(false);
 
   const toast = (msg, kind = "info") => {
     const id = Date.now() + Math.random();
@@ -487,6 +489,22 @@ export default function App() {
     setCode(s.code);
     setResult(null);
     toast(`Loaded demo snippet: ${name}`, "info");
+  };
+
+  const doPrReview = async () => {
+    if (!prUrl.trim()) { toast("Paste a GitHub PR URL first", "err"); return; }
+    setPrLoading(true); setError(""); setResult(null);
+    try {
+      const r = await fetch(`${API}/review/pr`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pr_url: prUrl.trim(), bank }),
+      });
+      const j = await parseOrThrow(r);
+      setResult({ ...j, findings: j.findings.map(f => ({ ...f, _review_id: j.review_id })) });
+      if (j.demo_fallback) toast("Demo fallback: LLM unavailable, showing canned findings", "info");
+    } catch (e) { setError(String(e.message || e)); }
+    setPrLoading(false);
   };
 
   const pickBank = (b) => {
@@ -559,6 +577,17 @@ export default function App() {
           <button onClick={doReview} disabled={loading} className="primary">
             {loading ? "Reviewing with memory…" : "Review Code"}
           </button>
+          <details className="mem-used">
+            <summary>…or review a GitHub PR URL</summary>
+            <div className="row" style={{ marginTop: 8 }}>
+              <input placeholder="https://github.com/owner/repo/pull/123"
+                value={prUrl} onChange={e => setPrUrl(e.target.value)} className="grow" />
+              <button onClick={doPrReview} disabled={prLoading}>
+                {prLoading ? "Fetching diff…" : "Review PR"}
+              </button>
+            </div>
+            <p className="hint">Fetches the diff via the public GitHub API (no auth; rate limits apply).</p>
+          </details>
 
           {result && (
             <div className="result">
