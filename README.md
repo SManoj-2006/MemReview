@@ -1,5 +1,7 @@
 # MemReview — AI Code Review Agent with Persistent Memory
 
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/SManoj-2006/MemReview/pulls)
+
 An AI code review agent that **learns your team's standards over time** using [Hindsight](https://hindsight.vectorize.io/) memory.
 
 ## The Problem
