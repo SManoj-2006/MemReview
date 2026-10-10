@@ -103,6 +103,7 @@ Open http://localhost:5173
 - **Team switcher** — per-team memory banks (`bank` param on every endpoint); memory is isolated per team.
 - **PR review** — paste a GitHub PR URL; the diff is fetched via the public GitHub API and reviewed.
 - **DEMO_MODE** — `DEMO_MODE=true` (or missing Groq key / LLM timeout) returns canned structured findings so a live demo never dies.
+- **Rust finding priority** — the standalone [`finding-priority` crate](rust/finding-priority/README.md) validates severity labels and stably orders findings from critical to nit.
 
 ## How Hindsight memory is used
 
