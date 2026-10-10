@@ -110,14 +110,22 @@ function FindingCard({ f, bank, onFeedbackDone, toast }) {
     setBusy(false);
   };
 
+  const isGuardrail = f.reason && f.reason.startsWith("guardrail:");
+
   return (
-    <div className="finding-card">
+    <div className={`finding-card ${isGuardrail ? "guardrail-card" : ""}`}>
       <div className="finding-head">
         <span className={`sev ${SEV_CLASS[f.severity] || "sev-medium"}`}>{f.severity}</span>
         <span className="fcat">{f.category}</span>
         {f.line != null && <span className="fline">line {f.line}</span>}
+        {isGuardrail && <span className="guard-badge">🛡️ guardrail</span>}
       </div>
       <p className="fmsg">{f.message}</p>
+      {f.evidence && (
+        <blockquote className="fevidence" title="Literal code supporting this finding">
+          <code>{f.evidence}</code>
+        </blockquote>
+      )}
       {f.suggestion && (
         <p className="fsugg"><strong>Fix:</strong> {f.suggestion}</p>
       )}
@@ -212,6 +220,30 @@ function CompareTab({ bank, toast }) {
             <span className="badge badge-mem">🧠 {cmp.memory_count} memories applied</span>
             {cmp.demo_fallback && <span className="badge badge-demo">demo fallback</span>}
           </div>
+          {cmp.guardrail_stats && (
+            <div className="quality-panel">
+              <h4>🛡️ Quality Metrics <span className="qp-sub">— guardrails verified this review</span></h4>
+              <div className="qp-grid">
+                <div className="qp-stat"><strong>{cmp.guardrail_stats.findings_verified ?? "—"}</strong><span>findings verified</span></div>
+                <div className="qp-stat"><strong>{cmp.guardrail_stats.evidence_backed ?? "—"}</strong><span>evidence-backed</span></div>
+                <div className="qp-stat"><strong>{cmp.guardrail_stats.slop_removed ?? "—"}</strong><span>slop removed</span></div>
+                <div className="qp-stat"><strong>{cmp.guardrail_stats.nits_suppressed ?? "—"}</strong><span>nits suppressed</span></div>
+              </div>
+              {cmp.guardrail_stats.security_override_blocked?.length > 0 && (
+                <p className="qp-note override-note">
+                  🔒 Security override: team tried to suppress{" "}
+                  <code>{cmp.guardrail_stats.security_override_blocked.join(", ")}</code>{" "}
+                  — blocked. Security findings are never suppressible.
+                </p>
+              )}
+              {cmp.guardrail_stats.injection_detected && (
+                <p className="qp-note">⚠️ Prompt-injection pattern detected in input — treated as untrusted data.</p>
+              )}
+              {cmp.guardrail_stats.secrets_redacted?.length > 0 && (
+                <p className="qp-note">🔑 Secrets redacted before review: {cmp.guardrail_stats.secrets_redacted.join(", ")}.</p>
+              )}
+            </div>
+          )}
           <div className="compare-grid">
             <div className="compare-col generic">
               <h3>Generic AI Review</h3>
@@ -240,13 +272,17 @@ function CompareTab({ bank, toast }) {
                 </p>
               )}
               {cmp.personalized.map(f => (
-                <div key={f.id} className={`finding-card ${!catsOf(cmp.generic).has(f.category) ? "added" : ""}`}>
+                <div key={f.id} className={`finding-card ${!catsOf(cmp.generic).has(f.category) ? "added" : ""} ${f.reason?.startsWith("guardrail:") ? "guardrail-card" : ""}`}>
                   <div className="finding-head">
                     <span className={`sev ${SEV_CLASS[f.severity] || "sev-medium"}`}>{f.severity}</span>
                     <span className="fcat">{f.category}</span>
                     {f.line != null && <span className="fline">line {f.line}</span>}
+                    {f.reason?.startsWith("guardrail:") && <span className="guard-badge">🛡️ guardrail</span>}
                   </div>
                   <p className="fmsg">{f.message}</p>
+                  {f.evidence && (
+                    <blockquote className="fevidence"><code>{f.evidence}</code></blockquote>
+                  )}
                   {f.reason && (
                     <div className="why-tag"><span className="why-label">Why am I seeing this?</span> {f.reason}</div>
                   )}

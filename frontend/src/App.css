@@ -111,3 +111,21 @@ footer { text-align: center; color: #5a5e70; font-size: 12px; margin-top: 32px; 
 h2.tab-title { margin: 4px 0; font-size: 1.2rem; }
 .why-recurring { border-color: #7a5f2e; background: #2e2414; }
 .why-recurring .why-label { color: #ffce7a; }
+
+/* --- guardrails --- */
+.guardrail-card { border-color: #3b5bd6; background: #141a2e; }
+.guard-badge { font-size: 11px; background: #1e2a52; color: #9db4ff; border: 1px solid #3b5bd6; border-radius: 6px; padding: 2px 8px; }
+.fevidence { margin: 8px 0; padding: 8px 12px; background: #0e1119; border-left: 3px solid #4f46e5; border-radius: 0 6px 6px 0; font-size: 13px; }
+.fevidence code { font-family: Consolas, monospace; color: #c9d1ff; }
+
+/* --- quality metrics panel (compare tab) --- */
+.quality-panel { background: #12162a; border: 1px solid #2e3a6e; border-radius: 12px; padding: 14px 16px; margin: 12px 0; }
+.quality-panel h4 { margin: 0 0 10px; font-size: 1rem; color: #dbe4ff; }
+.qp-sub { font-weight: 400; font-size: 12px; color: #8a93b0; }
+.qp-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; }
+.qp-stat { background: #0e1220; border: 1px solid #2a3358; border-radius: 8px; padding: 10px; text-align: center; }
+.qp-stat strong { display: block; font-size: 1.5rem; color: #9db4ff; }
+.qp-stat span { font-size: 11px; color: #8a93b0; }
+.qp-note { margin: 10px 0 0; font-size: 13px; color: #c9d1ff; }
+.override-note { background: #2a1420; border: 1px solid #7a2e4a; border-radius: 8px; padding: 8px 12px; color: #ffb4c8; }
+.override-note code { color: #ffd1dc; }

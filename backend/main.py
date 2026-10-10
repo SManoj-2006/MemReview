@@ -141,6 +141,7 @@ class ReviewResponse(BaseModel):
     memory_count: int
     demo_fallback: bool = False
     suppressed: List[str] = []  # categories filtered by never-flag
+    guardrail_stats: Dict[str, Any] = {}
 
 
 class CompareRequest(BaseModel):
@@ -157,6 +158,7 @@ class CompareResponse(BaseModel):
     memories_used: List[str]
     memory_count: int
     demo_fallback: bool = False
+    guardrail_stats: Dict[str, Any] = {}
 
 
 class FeedbackRequest(BaseModel):
@@ -454,7 +456,7 @@ async def run_review(
     use_memory: bool,
     demo_personalized: bool = False,
 ) -> tuple[List[Finding], List[str], List[str], bool]:
-    """Core review pipeline. Returns (findings, memories_used, suppressed, demo_fallback)."""
+    """Core review pipeline. Returns (findings, memories_used, suppressed, demo_fallback, guardrail_stats)."""
     review_id = uuid.uuid4().hex[:8]
 
     # 1. RECALL
@@ -491,9 +493,13 @@ async def run_review(
             demo_fallback = True
 
     # 2b. GUARDRAILS — verify LLM output before trusting it
+    pre_guardrail = len(findings)
     findings = verify_lines(findings, code)
+    lines_nulled = sum(1 for f in findings if f.line is None)
     findings = filter_slop(findings)
+    slop_removed = pre_guardrail - len(findings)
     findings = validate_evidence(findings, code)
+    evidence_ok = sum(1 for f in findings if f.evidence)
     if injection_hits and not demo_fallback:
         # Surface the attempt as a finding so the team sees it
         findings.append(Finding(
@@ -515,11 +521,25 @@ async def run_review(
     # 3. Safe suppression: NEVER FLAG applies ONLY to cosmetic categories.
     #    Security/correctness findings can never be suppressed by team preference.
     suppressed: List[str] = []
+    blocked: List[str] = []
     if never_flag:
         findings, suppressed, blocked = safe_suppress(findings, never_flag)
         SUPPRESSED_COUNT[bank] += len(suppressed)
         # blocked = categories the team tried to suppress but are security-mandatory
     annotate_reasons(findings, "\n".join(memories))
+    FINDINGS_SERVED[bank] += len(findings)
+    REVIEWS_RUN[bank] += 1
+
+    guardrail_stats = {
+        "findings_verified": len(findings),
+        "lines_nulled": lines_nulled,
+        "slop_removed": slop_removed,
+        "evidence_backed": evidence_ok,
+        "nits_suppressed": len(suppressed),
+        "security_override_blocked": blocked,
+        "injection_detected": bool(injection_hits),
+        "secrets_redacted": secret_hits,
+    }
     FINDINGS_SERVED[bank] += len(findings)
     REVIEWS_RUN[bank] += 1
 
@@ -541,7 +561,7 @@ async def run_review(
         except Exception:
             pass
 
-    return findings, memories, suppressed, demo_fallback
+    return findings, memories, suppressed, demo_fallback, guardrail_stats
 
 
 # --- Endpoints ---
@@ -571,7 +591,7 @@ def _validate_code(code: str):
 async def review_code(req: ReviewRequest):
     _validate_code(req.code)
     bank = resolve_bank(req.bank)
-    findings, memories, suppressed, demo_fallback = await run_review(
+    findings, memories, suppressed, demo_fallback, gstats = await run_review(
         req.code, req.language, req.context or "", bank, use_memory=True
     )
     return ReviewResponse(
@@ -581,6 +601,7 @@ async def review_code(req: ReviewRequest):
         memory_count=len(memories),
         demo_fallback=demo_fallback,
         suppressed=suppressed,
+        guardrail_stats=gstats,
     )
 
 
@@ -589,7 +610,7 @@ async def review_compare(req: CompareRequest):
     """Run the same code twice: generic (no memory) vs personalized (with memory)."""
     _validate_code(req.code)
     bank = resolve_bank(req.bank)
-    (generic, _, _, fb1), (personalized, memories, _, fb2) = await asyncio.gather(
+    (generic, _, _, fb1, gs1), (personalized, memories, _, fb2, gs2) = await asyncio.gather(
         run_review(req.code, req.language, req.context or "", bank, use_memory=False),
         run_review(req.code, req.language, req.context or "", bank, use_memory=True,
                    demo_personalized=True),
@@ -601,6 +622,7 @@ async def review_compare(req: CompareRequest):
         memories_used=memories,
         memory_count=len(memories),
         demo_fallback=fb1 or fb2,
+        guardrail_stats=gs2,
     )
 
 
@@ -811,7 +833,7 @@ async def review_pr(req: PrReviewRequest):
     if not diff.strip():
         raise HTTPException(400, "No reviewable diff found in this PR")
 
-    findings, memories, suppressed, demo_fallback = await run_review(
+    findings, memories, suppressed, demo_fallback, gstats = await run_review(
         f"GitHub PR diff (truncated to {MAX_DIFF_LEN} chars):\n\n{diff}",
         "diff", f"PR {owner}/{repo}#{num}", bank, use_memory=True,
     )
@@ -822,4 +844,5 @@ async def review_pr(req: PrReviewRequest):
         memory_count=len(memories),
         demo_fallback=demo_fallback,
         suppressed=suppressed,
+        guardrail_stats=gstats,
     )
